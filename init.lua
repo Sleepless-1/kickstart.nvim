@@ -91,7 +91,7 @@ vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = false
+vim.g.have_nerd_font = true
 
 -- [[ Setting options ]]
 -- See `:help vim.o`
@@ -102,7 +102,7 @@ vim.g.have_nerd_font = false
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+vim.o.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
@@ -165,6 +165,26 @@ vim.o.scrolloff = 10
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
 vim.o.confirm = true
+
+-- utf8 config
+vim.opt.fileencoding = 'utf-8'
+vim.env.LANG = 'en_US.UTF-8'
+vim.env.LC_ALL = 'en_US.UTF-8'
+
+-- launch nvimtree if we open in a CMake project root
+vim.api.nvim_create_autocmd('VimEnter', {
+  callback = function(data)
+    -- only trigger when no file was passed to nvim (i.e. dir start)
+    if vim.fn.argc() == 0 then
+      local cwd = vim.fn.getcwd()
+      -- check for CMakeLists.txt in cwd
+      if vim.fn.filereadable(cwd .. '/CMakeLists.txt') == 1 then
+        -- use the new nvim-tree API to open the tree
+        require('nvim-tree.api').tree.open()
+      end
+    end
+  end,
+})
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
@@ -461,6 +481,106 @@ require('lazy').setup({
       end, { desc = '[S]earch [N]eovim files' })
     end,
   },
+  -- nvim-tree file explorer
+  {
+    'nvim-tree/nvim-tree.lua',
+    dependencies = 'nvim-tree/nvim-web-devicons',
+    config = function()
+      local function on_attach(bufnr)
+        local api = require 'nvim-tree.api'
+        local function opts(desc)
+          return { desc = 'nvim-tree: ' .. desc, buffer = bufnr, noremap = true, silent = true, nowait = true }
+        end
+
+        -- apply all the default keymaps
+        api.config.mappings.default_on_attach(bufnr)
+
+        -- remove the three Ctrl-bindings you don’t want
+        vim.keymap.del('n', '<C-t>', { buffer = bufnr })
+        vim.keymap.del('n', '<C-v>', { buffer = bufnr })
+        vim.keymap.del('n', '<C-x>', { buffer = bufnr })
+
+        -- now add your leader-based replacements
+        vim.keymap.set('n', '<leader>t', api.node.open.tab, opts 'Open: New Tab')
+        vim.keymap.set('n', '<leader>v', api.node.open.vertical, opts 'Open: Vertical Split')
+        vim.keymap.set('n', '<leader>x', api.node.open.horizontal, opts 'Open: Horizontal Split')
+      end
+      require('nvim-tree').setup {
+        on_attach = on_attach,
+        filters = {
+          dotfiles = true,
+          custom = { 'third-party', 'build' },
+        },
+        view = { side = 'left', width = 35 },
+        renderer = { icons = { show = { git = true, diagnostics = true } } },
+        actions = {
+          open_file = {
+            quit_on_open = false,
+            resize_window = true,
+            window_picker = {
+              enable = true,
+              -- use the picker function from s1n7ax/nvim-window-picker:
+              picker = require('window-picker').pick_window,
+              -- which chars to use as labels:
+              chars = '1234567890',
+              -- exclude certain windows (e.g. terminals, help, etc.)
+              exclude = {
+                filetype = { 'notify', 'packer', 'qf', 'diff', 'fugitive', 'fugitiveblame' },
+                buftype = { 'terminal', 'help', 'nofile' },
+              },
+            },
+          },
+        },
+      }
+      vim.keymap.set('n', '<C-n>', '<cmd>NvimTreeToggle<CR>', { desc = 'Toggle NvimTree' })
+    end,
+  },
+  {
+    's1n7ax/nvim-window-picker',
+    name = 'window-picker',
+    version = '2.*',
+    event = 'VeryLazy',
+    config = function()
+      require('window-picker').setup {
+        -- optional: customize the hint style, chars, filter rules, etc.
+        hint = 'floating-big-letter',
+        selection_chars = '1234567890',
+        show_prompt = false,
+        filter_rules = {
+          bo = { filetype = { 'NvimTree', 'neo-tree', 'notify' }, buftype = { 'terminal' } },
+        },
+      }
+    end,
+  },
+  {
+    'NeogitOrg/neogit',
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'sindrets/diffview.nvim',
+      'nvim-telescope/telescope.nvim',
+    },
+    config = function()
+      require('neogit').setup {
+        integrations = { diffview = true }, -- integrate with diffview.nvim
+        disable_commit_confirmation = true,
+      }
+      vim.keymap.set('n', '<leader>ng', ':Neogit<CR>', { desc = 'Neogit Status' })
+    end,
+  },
+
+  -- toggleterm
+  {
+    'akinsho/toggleterm.nvim',
+    version = 'v2.13.1',
+    config = function()
+      require('toggleterm').setup {
+        open_mapping = [[<c-t>]],
+        terminal_mappings = true,
+        size = 120,
+        direction = 'vertical',
+      }
+    end,
+  },
 
   -- LSP Plugins
   {
@@ -474,6 +594,189 @@ require('lazy').setup({
         { path = '${3rd}/luv/library', words = { 'vim%.uv' } },
       },
     },
+  },
+  {
+    'mfussenegger/nvim-dap',
+    -- OPTIONAL eye-candy: comment out if you don’t want the sidebar/debug REPL
+    dependencies = {
+      {
+        'rcarriga/nvim-dap-ui',
+        config = function()
+          require('dapui').setup()
+        end,
+      },
+    },
+
+    config = function()
+      local dap = require 'dap'
+
+      dap.adapters.codelldb = {
+        type = 'executable',
+        name = 'codelldb',
+        command = 'C:\\Users\\aaron\\.nvim-data\\mason\\packages\\codelldb\\extension\\adapter\\codelldb.exe',
+        detached = false,
+      }
+
+      -- (Optional) open dap-ui automatically
+      local dapui = package.loaded['dapui'] and require 'dapui'
+      if dapui then
+        dap.listeners.after.event_initialized['dapui'] = function()
+          dapui.open()
+        end
+        dap.listeners.before.event_terminated['dapui'] = function()
+          dapui.close()
+        end
+        dap.listeners.before.event_exited['dapui'] = function()
+          dapui.close()
+        end
+      end
+    end,
+  },
+  {
+    'Civitasv/cmake-tools.nvim',
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'stevearc/overseer.nvim',
+    },
+    config = function()
+      require('cmake-tools').setup {
+        cmake_command = 'cmake', -- this is used to specify cmake command path
+        ctest_command = 'ctest', -- this is used to specify ctest command path
+        cmake_use_preset = true,
+        cmake_regenerate_on_save = true, -- auto generate when save CMakeLists.txt
+        cmake_build_directory = 'build',
+        cmake_compile_commands_options = {
+          action = 'json',
+        },
+        cmake_kits_path = nil, -- this is used to specify global cmake kits path, see CMakeKits for detailed usage
+        cmake_variants_message = {
+          short = { show = true }, -- whether to show short message
+          long = { show = true, max_length = 40 }, -- whether to show long message
+        },
+        cmake_dap_configuration = { -- debug settings for cmake
+          name = 'cpp',
+          type = 'codelldb',
+          request = 'launch',
+          stopOnEntry = false,
+          runInTerminal = true,
+          initCommands = {
+            'settings set target.inline-breakpoint-strategy always',
+          },
+          console = 'integratedTerminal',
+        },
+        cmake_executor = { -- executor to use
+          name = 'toggleterm', -- name of the executor
+          opts = {
+            size = 120,
+            direction = 'vertical', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+          }, -- the options the executor will get, possible values depend on the executor type. See `default_opts` for possible values.
+          default_opts = { -- a list of default and possible values for executors
+            quickfix = {
+              show = 'always', -- "always", "only_on_error"
+              position = 'belowright', -- "vertical", "horizontal", "leftabove", "aboveleft", "rightbelow", "belowright", "topleft", "botright", use `:h vertical` for example to see help on them
+              size = math.floor(vim.o.columns * 0.33), -- width ≃ 30% of total columns
+              encoding = 'utf-8', -- if encoding is not "utf-8", it will be converted to "utf-8" using `vim.fn.iconv`
+              auto_close_when_success = true, -- typically, you can use it with the "always" option; it will auto-close the quickfix buffer if the execution is successful.
+            },
+            toggleterm = {
+              direction = 'float', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+              size = 15,
+              close_on_exit = false, -- whether close the terminal when exit
+              auto_scroll = true, -- whether auto scroll to the bottom
+              singleton = true, -- single instance, autocloses the opened one, if present
+            },
+            overseer = {
+              new_task_opts = {
+                strategy = {
+                  'toggleterm',
+                  direction = 'vertical',
+                  auto_scroll = true,
+                  quit_on_exit = 'success',
+                },
+              }, -- options to pass into the `overseer.new_task` command
+              on_new_task = function()
+                require('overseer').open { enter = false, direction = 'right' }
+              end, -- a function that gets overseer.Task when it is created, before calling `task:start`
+            },
+            terminal = {
+              name = 'Main Terminal',
+              prefix_name = '[CMakeTools]: ', -- This must be included and must be unique, otherwise the terminals will not work. Do not use a simple spacebar " ", or any generic name
+              split_direction = 'horizontal', -- "horizontal", "vertical"
+              split_size = 11,
+
+              -- Window handling
+              single_terminal_per_instance = true, -- Single viewport, multiple windows
+              single_terminal_per_tab = true, -- Single viewport per tab
+              keep_terminal_static_location = true, -- Static location of the viewport if avialable
+              auto_resize = true, -- Resize the terminal if it already exists
+
+              -- Running Tasks
+              start_insert = false, -- If you want to enter terminal with :startinsert upon using :CMakeRun
+              focus = false, -- Focus on terminal when cmake task is launched.
+              do_not_add_newline = false, -- Do not hit enter on the command inserted when using :CMakeRun, allowing a chance to review or modify the command before hitting enter.
+            }, -- terminal executor uses the values in cmake_terminal
+          },
+        },
+        cmake_runner = { -- runner to use
+          name = 'toggleterm', -- name of the runner
+          opts = {
+            size = 120,
+            direction = 'vertical', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+          }, -- the options the runner will get, possible values depend on the runner type. See `default_opts` for possible values.
+          default_opts = { -- a list of default and possible values for runners
+            quickfix = {
+              show = 'always', -- "always", "only_on_error"
+              position = 'horizontal', -- "bottom", "top"
+              size = 15,
+              encoding = 'utf-8',
+              auto_close_when_success = true, -- typically, you can use it with the "always" option; it will auto-close the quickfix buffer if the execution is successful.
+            },
+            toggleterm = {
+              direction = 'float', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+              close_on_exit = true, -- whether close the terminal when exit
+              auto_scroll = true, -- whether auto scroll to the bottom
+              singleton = true, -- single instance, autocloses the opened one, if present
+            },
+            overseer = {
+              new_task_opts = {
+                strategy = {
+                  'toggleterm',
+                  direction = 'vertical',
+                  autos_croll = true,
+                  quit_on_exit = 'success',
+                },
+              }, -- options to pass into the `overseer.new_task` command
+              on_new_task = function(task) end, -- a function that gets overseer.Task when it is created, before calling `task:start`
+            },
+            terminal = {
+              name = 'Main Terminal',
+              prefix_name = '[CMakeTools]: ', -- This must be included and must be unique, otherwise the terminals will not work. Do not use a simple spacebar " ", or any generic name
+              split_direction = 'vertical', -- "horizontal", "vertical"
+              split_size = 11,
+
+              -- Window handling
+              single_terminal_per_instance = true, -- Single viewport, multiple windows
+              single_terminal_per_tab = true, -- Single viewport per tab
+              keep_terminal_static_location = true, -- Static location of the viewport if avialable
+              auto_resize = true, -- Resize the terminal if it already exists
+
+              -- Running Tasks
+              start_insert = false, -- If you want to enter terminal with :startinsert upon using :CMakeRun
+              focus = false, -- Focus on terminal when cmake task is launched.
+              do_not_add_newline = false, -- Do not hit enter on the command inserted when using :CMakeRun, allowing a chance to review or modify the command before hitting enter.
+            },
+          },
+        },
+        cmake_notifications = {
+          runner = { enabled = true },
+          executor = { enabled = true },
+          spinner = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' }, -- icons used for progress display
+          refresh_rate_ms = 100, -- how often to iterate icons
+        },
+        cmake_virtual_text_support = true, -- Show the target related to current file using virtual text (at right corner)
+        cmake_use_scratch_buffer = false, -- A buffer that shows what cmake-tools has done
+      }
+    end, -- cmake-tools setup()
   },
   {
     -- Main LSP Configuration
@@ -552,7 +855,7 @@ require('lazy').setup({
 
           -- Jump to the definition of the word under your cursor.
           --  This is where a variable was first declared, or where a function is defined, etc.
-          --  To jump back, press <C-t>.
+          --  To jmp back, press <C-t>.
           map('grd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
 
           -- WARN: This is not Goto Definition, this is Goto Declaration.
@@ -670,8 +973,38 @@ require('lazy').setup({
       --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
+      local util = require 'lspconfig/util'
+      local buildDir = tostring(require('cmake-tools').get_build_directory())
       local servers = {
-        -- clangd = {},
+        clangd = {
+          capabilities = capabilities,
+          cmd = {
+            'clangd',
+            '--background-index',
+            '--header-insertion=never',
+            '--query-driver=D:/msys64/ucrt64/bin/*',
+            '--compile-commands-dir=' .. buildDir,
+          },
+          root_dir = util.root_pattern('compile_commands.json', '.git'),
+          on_attach = function(client, bufnr)
+            -- only set up formatting if the server supports it
+            if client.server_capabilities.documentFormattingProvider then
+              -- clear any existing formatting autocmds for this buffer
+              vim.api.nvim_clear_autocmds {
+                group = 'LspFormatting',
+                buffer = bufnr,
+              }
+              -- format *synchronously* on save
+              vim.api.nvim_create_autocmd('BufWritePre', {
+                group = 'LspFormatting',
+                buffer = bufnr,
+                callback = function()
+                  vim.lsp.buf.format { bufnr = bufnr, async = false }
+                end,
+              })
+            end
+          end,
+        },
         -- gopls = {},
         -- pyright = {},
         -- rust_analyzer = {},
@@ -875,26 +1208,65 @@ require('lazy').setup({
       signature = { enabled = true },
     },
   },
-
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
-    priority = 1000, -- Make sure to load this before all the other start plugins.
+  {
+    'nvim-neotest/neotest',
+    dependencies = {
+      'nvim-neotest/nvim-nio',
+      'nvim-lua/plenary.nvim',
+      'nvim-treesitter/nvim-treesitter',
+      'antoinemadec/FixCursorHold.nvim', -- optional but recommended
+      'alfaix/neotest-gtest', -- ← the GoogleTest adapter
+    },
     config = function()
-      ---@diagnostic disable-next-line: missing-fields
-      require('tokyonight').setup {
-        styles = {
-          comments = { italic = false }, -- Disable italics in comments
+      require('neotest').setup {
+        adapters = {
+          require('neotest-gtest').setup {
+            mappings = {
+              configure = 'C', -- pressing C in the summary runs :ConfigureGtest
+            },
+          },
         },
       }
 
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+      local neotest = require 'neotest'
+      vim.keymap.set('n', '<leader>tn', neotest.run.run, { desc = 'Run nearest test' })
+      vim.keymap.set('n', '<leader>ts', neotest.summary.toggle, { desc = 'Toggle test summary' })
+      vim.keymap.set('n', '<leader>td', function()
+        neotest.run.run { strategy = 'dap' }
+      end, { desc = 'Debug nearest test' })
+      vim.keymap.set('n', '<leader>tf', function()
+        neotest.run.run { vim.fn.expand '%' }
+      end, { desc = 'Run all tests in current file' })
+    end,
+  },
+
+  --  { -- You can easily change to a different colorscheme.
+  --    -- Change the name of the colorscheme plugin below, and then
+  --    -- change the command in the config to whatever the name of that colorscheme is.
+  --    --
+  --    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  --    'folke/tokyonight.nvim',
+  --    priority = 1000, -- Make sure to load this before all the other start plugins.
+  --    config = function()
+  --      ---@diagnostic disable-next-line: missing-fields
+  --      require('tokyonight').setup {
+  --        styles = {
+  --          comments = { italic = false }, -- Disable italics in comments
+  --        },
+  --      }
+  --
+  --      -- Load the colorscheme here.
+  --      -- Like many other themes, this one has different styles, and you could load
+  --      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+  --      vim.cmd.colorscheme 'tokyonight-night'
+  --    end,
+  --  },
+  {
+    'scottmckendry/cyberdream.nvim',
+    lazy = false,
+    priority = 1000, -- load before everything else
+    config = function()
+      vim.cmd.colorscheme 'cyberdream'
     end,
   },
 
@@ -944,7 +1316,7 @@ require('lazy').setup({
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = { 'bash', 'c', 'cpp', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
