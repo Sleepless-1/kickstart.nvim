@@ -104,6 +104,12 @@ vim.o.number = true
 --  Experiment for yourself to see if you like it!
 vim.o.relativenumber = true
 
+-- Fix tab defaults
+vim.opt.tabstop = 4
+vim.opt.shiftwidth = 4
+vim.opt.softtabstop = 4
+vim.opt.expandtab = true
+
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
 
@@ -511,8 +517,20 @@ require('lazy').setup({
           dotfiles = true,
           custom = { 'third-party', 'build' },
         },
-        view = { side = 'left', width = 35 },
-        renderer = { icons = { show = { git = true, diagnostics = true } } },
+        view = {
+          side = 'left',
+          width = 35,
+          number = true,
+          relativenumber = true,
+        },
+        renderer = {
+          icons = {
+            show = {
+              git = true,
+              diagnostics = true,
+            },
+          },
+        },
         actions = {
           open_file = {
             quit_on_open = false,
@@ -613,8 +631,17 @@ require('lazy').setup({
       dap.adapters.codelldb = {
         type = 'executable',
         name = 'codelldb',
-        command = 'C:\\Users\\aaron\\.nvim-data\\mason\\packages\\codelldb\\extension\\adapter\\codelldb.exe',
+        --  command = 'C:\\Users\\aaron\\.nvim-data\\mason\\packages\\codelldb\\extension\\adapter\\codelldb.exe',
+        command = vim.fn.stdpath 'data' .. '/mason/packages/codelldb/extension/adapter/codelldb',
         detached = false,
+        --type = 'server',
+        --host = '127.0.0.1',
+        --port = '${port}',
+        --executable = {
+        --  command = vim.fn.stdpath 'data' .. '/mason/packages/codelldb/extension/adapter/codelldb',
+        --  args = { '--port', '${port}' },
+        --  detached = false,
+        --},
       }
 
       -- (Optional) open dap-ui automatically
@@ -629,6 +656,31 @@ require('lazy').setup({
         dap.listeners.before.event_exited['dapui'] = function()
           dapui.close()
         end
+      end
+      ------------------------------------------------------------------------
+      -- DAP  ── global key-maps
+      ------------------------------------------------------------------------
+
+      -- ── run / stepping ───────────────────────────────────────────────────
+      vim.keymap.set({ 'n', 'v' }, '<F5>', dap.continue, { desc = 'DAP  ▸  Continue/Start' })
+      vim.keymap.set({ 'n', 'v' }, '<F10>', dap.step_over, { desc = 'DAP  ↷  Step Over' })
+      vim.keymap.set({ 'n', 'v' }, '<F11>', dap.step_into, { desc = 'DAP  ↧  Step Into' })
+      vim.keymap.set({ 'n', 'v' }, '<F12>', dap.step_out, { desc = 'DAP  ↥  Step Out' })
+
+      -- ── breakpoints ──────────────────────────────────────────────────────
+      vim.keymap.set('n', '<F9>', dap.toggle_breakpoint, { desc = 'DAP  ●  Toggle Breakpoint' })
+      vim.keymap.set('n', '<leader>db', function()
+        dap.set_breakpoint(vim.fn.input 'Condition: ')
+      end, { desc = 'DAP  ◆  Conditional Breakpoint' })
+
+      -- ── misc helpers ─────────────────────────────────────────────────────
+      vim.keymap.set('n', '<leader>dr', dap.repl.toggle, { desc = 'DAP    Toggle REPL' })
+      vim.keymap.set('n', '<leader>dl', dap.run_last, { desc = 'DAP  ⟳  Run Last Session' })
+
+      -- ── DAP-UI shortcuts (only if plugin loaded) ─────────────────────────
+      if dapui then
+        vim.keymap.set('n', '<leader>du', dapui.toggle, { desc = 'DAP-UI 󰏗 Toggle UI' })
+        vim.keymap.set({ 'n', 'v' }, '<leader>de', dapui.eval, { desc = 'DAP-UI 󰗚 Eval' })
       end
     end,
   },
@@ -661,6 +713,9 @@ require('lazy').setup({
           runInTerminal = true,
           initCommands = {
             'settings set target.inline-breakpoint-strategy always',
+          },
+          sourceMap = {
+            ['C:/Users/aaron/source/ae'] = 'D:/SourceCode/ae',
           },
           console = 'integratedTerminal',
         },
@@ -776,6 +831,15 @@ require('lazy').setup({
         cmake_virtual_text_support = true, -- Show the target related to current file using virtual text (at right corner)
         cmake_use_scratch_buffer = false, -- A buffer that shows what cmake-tools has done
       }
+      -- ── fix cmake-tools nil-params crash ───────────────────────────────
+      local ct = require 'cmake-tools'
+      if not ct._patched_nil_params then
+        local orig_sub = ct.substitute_path
+        ct.substitute_path = function(path, params)
+          return orig_sub(path, params or {}) -- coerce nil ➜ empty table
+        end
+        ct._patched_nil_params = true -- don’t double-patch on reload
+      end
     end, -- cmake-tools setup()
   },
   {
@@ -974,16 +1038,16 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local util = require 'lspconfig/util'
-      local buildDir = tostring(require('cmake-tools').get_build_directory())
+      local cmake = require 'cmake-tools'
+      local build_dir = vim.fn.fnamemodify(tostring(cmake.get_build_directory()), ':p')
+
       local servers = {
         clangd = {
           capabilities = capabilities,
           cmd = {
-            'clangd',
+            'D:/msys64/ucrt64/bin/clangd.exe',
             '--background-index',
-            '--header-insertion=never',
-            '--query-driver=D:/msys64/ucrt64/bin/*',
-            '--compile-commands-dir=' .. buildDir,
+            '--compile-commands-dir=' .. build_dir,
           },
           root_dir = util.root_pattern('compile_commands.json', '.git'),
           on_attach = function(client, bufnr)
@@ -1068,7 +1132,6 @@ require('lazy').setup({
       }
     end,
   },
-
   { -- Autoformat
     'stevearc/conform.nvim',
     event = { 'BufWritePre' },
