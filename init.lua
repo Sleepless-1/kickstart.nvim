@@ -324,7 +324,7 @@ require('lazy').setup({
   -- Then, because we use the `opts` key (recommended), the configuration runs
   -- after the plugin has been loaded as `require(MODULE).setup(opts)`.
 
-  { -- Useful plugin to show you pending keybinds.
+  {                     -- Useful plugin to show you pending keybinds.
     'folke/which-key.nvim',
     event = 'VimEnter', -- Sets the loading event to 'VimEnter'
     opts = {
@@ -405,7 +405,7 @@ require('lazy').setup({
       { 'nvim-telescope/telescope-ui-select.nvim' },
 
       -- Useful for getting pretty icons, but requires a Nerd Font.
-      { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
+      { 'nvim-tree/nvim-web-devicons',            enabled = vim.g.have_nerd_font },
     },
     config = function()
       -- Telescope is a fuzzy finder that comes with a lot of different things that
@@ -619,9 +619,26 @@ require('lazy').setup({
     dependencies = {
       {
         'rcarriga/nvim-dap-ui',
-        config = function()
-          require('dapui').setup()
-        end,
+        opts = {
+          -- tree arrows and current frame marker
+          icons = { expanded = '▾', collapsed = '▸', current_frame = '➤' },
+
+          -- optional toolbar; shows these glyphs when enabled
+          controls = {
+            enabled = true,   -- set to false if you don't want the toolbar
+            element = 'repl', -- or 'scopes', 'stacks', etc.
+            icons = {
+              pause = '⏸',
+              play = '▸',
+              step_into = '↧',
+              step_over = '↷',
+              step_out = '↥',
+              run_last = '⟳',
+              terminate = '■',
+              disconnect = '⏏',
+            },
+          },
+        },
       },
     },
 
@@ -631,22 +648,14 @@ require('lazy').setup({
       dap.adapters.codelldb = {
         type = 'executable',
         name = 'codelldb',
-        --  command = 'C:\\Users\\aaron\\.nvim-data\\mason\\packages\\codelldb\\extension\\adapter\\codelldb.exe',
         command = vim.fn.stdpath 'data' .. '/mason/packages/codelldb/extension/adapter/codelldb',
         detached = false,
-        --type = 'server',
-        --host = '127.0.0.1',
-        --port = '${port}',
-        --executable = {
-        --  command = vim.fn.stdpath 'data' .. '/mason/packages/codelldb/extension/adapter/codelldb',
-        --  args = { '--port', '${port}' },
-        --  detached = false,
-        --},
       }
 
-      -- (Optional) open dap-ui automatically
-      local dapui = package.loaded['dapui'] and require 'dapui'
+      -- open dap-ui automatically
+      local dapui = require 'dapui'
       if dapui then
+        dapui.setup {}
         dap.listeners.after.event_initialized['dapui'] = function()
           dapui.open()
         end
@@ -657,6 +666,19 @@ require('lazy').setup({
           dapui.close()
         end
       end
+
+      ------------------------------------------------------------------------
+      -- DAP ── signs (gutter “hints” in source windows)
+      ------------------------------------------------------------------------
+      -- optional: a subtle highlight for the stopped line
+      vim.api.nvim_set_hl(0, 'DapStoppedLine', { default = true, link = 'CursorLine' })
+
+      vim.fn.sign_define('DapBreakpoint', { text = '●', texthl = 'DiagnosticSignError' })
+      vim.fn.sign_define('DapBreakpointCondition', { text = '◆', texthl = 'DiagnosticSignWarn' })
+      vim.fn.sign_define('DapBreakpointRejected', { text = '○', texthl = 'DiagnosticSignHint' })
+      vim.fn.sign_define('DapLogPoint', { text = '✎', texthl = 'DiagnosticSignInfo' })
+      vim.fn.sign_define('DapStopped', { text = '➤', texthl = 'DiagnosticSignInfo', linehl = 'DapStoppedLine' })
+
       ------------------------------------------------------------------------
       -- DAP  ── global key-maps
       ------------------------------------------------------------------------
@@ -667,21 +689,59 @@ require('lazy').setup({
       vim.keymap.set({ 'n', 'v' }, '<F11>', dap.step_into, { desc = 'DAP  ↧  Step Into' })
       vim.keymap.set({ 'n', 'v' }, '<F12>', dap.step_out, { desc = 'DAP  ↥  Step Out' })
 
+      -- extras
+      vim.keymap.set({ 'n', 'v' }, '<S-F5>', dap.terminate, { desc = 'DAP  ■  Stop/Terminate' })
+      vim.keymap.set({ 'n', 'v' }, '<F6>', dap.pause, { desc = 'DAP  ⏸  Pause' })
+      vim.keymap.set({ 'n', 'v' }, '<F8>', dap.run_to_cursor, { desc = 'DAP  ➤  Run to Cursor' })
+      vim.keymap.set('n', '<leader>dk', function()
+        dap.up()
+      end, { desc = 'DAP  ⇡  Stack Up' })
+      vim.keymap.set('n', '<leader>dj', function()
+        dap.down()
+      end, { desc = 'DAP  ⇣  Stack Down' })
+
       -- ── breakpoints ──────────────────────────────────────────────────────
       vim.keymap.set('n', '<F9>', dap.toggle_breakpoint, { desc = 'DAP  ●  Toggle Breakpoint' })
       vim.keymap.set('n', '<leader>db', function()
         dap.set_breakpoint(vim.fn.input 'Condition: ')
       end, { desc = 'DAP  ◆  Conditional Breakpoint' })
+      vim.keymap.set('n', '<leader>dp', function()
+        dap.set_breakpoint(nil, nil, vim.fn.input 'Log point message: ')
+      end, { desc = 'DAP  ✎  Logpoint' })
+      vim.keymap.set('n', '<leader>dB', dap.clear_breakpoints, { desc = 'DAP  ○  Clear All Breakpoints' })
 
       -- ── misc helpers ─────────────────────────────────────────────────────
       vim.keymap.set('n', '<leader>dr', dap.repl.toggle, { desc = 'DAP    Toggle REPL' })
       vim.keymap.set('n', '<leader>dl', dap.run_last, { desc = 'DAP  ⟳  Run Last Session' })
+      if dap.restart then
+        vim.keymap.set('n', '<leader>dR', dap.restart, { desc = 'DAP  ⟲  Restart Session' })
+      end
 
       -- ── DAP-UI shortcuts (only if plugin loaded) ─────────────────────────
       if dapui then
         vim.keymap.set('n', '<leader>du', dapui.toggle, { desc = 'DAP-UI 󰏗 Toggle UI' })
         vim.keymap.set({ 'n', 'v' }, '<leader>de', dapui.eval, { desc = 'DAP-UI 󰗚 Eval' })
       end
+
+      ------------------------------------------------------------------------
+      -- DAP / LSP ── smart hover: use DAP-UI eval while debugging, else LSP
+      ------------------------------------------------------------------------
+      local function smart_hover_or_eval()
+        local ok_dap, _dap = pcall(require, 'dap')
+        local ok_ui, _dapui = pcall(require, 'dapui')
+        if ok_dap and ok_ui and _dap.session() then
+          -- DAP session active → evaluate under cursor / selection in current frame
+          _dapui.eval()
+        else
+          -- No session → regular LSP hover
+          if vim.lsp.buf and vim.lsp.buf.hover then
+            vim.lsp.buf.hover()
+          end
+        end
+      end
+
+      -- Normal + Visual: K shows value (DAP) or docs (LSP)
+      vim.keymap.set({ 'n', 'v' }, 'K', smart_hover_or_eval, { desc = 'DAP-UI 󰗚 Eval / LSP Hover' })
     end,
   },
   {
@@ -692,20 +752,20 @@ require('lazy').setup({
     },
     config = function()
       require('cmake-tools').setup {
-        cmake_command = 'cmake', -- this is used to specify cmake command path
-        ctest_command = 'ctest', -- this is used to specify ctest command path
+        cmake_command = 'cmake',         -- this is used to specify cmake command path
+        ctest_command = 'ctest',         -- this is used to specify ctest command path
         cmake_use_preset = true,
         cmake_regenerate_on_save = true, -- auto generate when save CMakeLists.txt
         cmake_build_directory = 'build',
         cmake_compile_commands_options = {
           action = 'json',
         },
-        cmake_kits_path = nil, -- this is used to specify global cmake kits path, see CMakeKits for detailed usage
+        cmake_kits_path = nil,                     -- this is used to specify global cmake kits path, see CMakeKits for detailed usage
         cmake_variants_message = {
-          short = { show = true }, -- whether to show short message
+          short = { show = true },                 -- whether to show short message
           long = { show = true, max_length = 40 }, -- whether to show long message
         },
-        cmake_dap_configuration = { -- debug settings for cmake
+        cmake_dap_configuration = {                -- debug settings for cmake
           name = 'cpp',
           type = 'codelldb',
           request = 'launch',
@@ -719,26 +779,26 @@ require('lazy').setup({
           },
           console = 'integratedTerminal',
         },
-        cmake_executor = { -- executor to use
+        cmake_executor = {     -- executor to use
           name = 'toggleterm', -- name of the executor
           opts = {
             size = 120,
-            direction = 'vertical', -- 'vertical' | 'horizontal' | 'tab' | 'float'
-          }, -- the options the executor will get, possible values depend on the executor type. See `default_opts` for possible values.
-          default_opts = { -- a list of default and possible values for executors
+            direction = 'vertical',                    -- 'vertical' | 'horizontal' | 'tab' | 'float'
+          },                                           -- the options the executor will get, possible values depend on the executor type. See `default_opts` for possible values.
+          default_opts = {                             -- a list of default and possible values for executors
             quickfix = {
-              show = 'always', -- "always", "only_on_error"
-              position = 'belowright', -- "vertical", "horizontal", "leftabove", "aboveleft", "rightbelow", "belowright", "topleft", "botright", use `:h vertical` for example to see help on them
+              show = 'always',                         -- "always", "only_on_error"
+              position = 'belowright',                 -- "vertical", "horizontal", "leftabove", "aboveleft", "rightbelow", "belowright", "topleft", "botright", use `:h vertical` for example to see help on them
               size = math.floor(vim.o.columns * 0.33), -- width ≃ 30% of total columns
-              encoding = 'utf-8', -- if encoding is not "utf-8", it will be converted to "utf-8" using `vim.fn.iconv`
-              auto_close_when_success = true, -- typically, you can use it with the "always" option; it will auto-close the quickfix buffer if the execution is successful.
+              encoding = 'utf-8',                      -- if encoding is not "utf-8", it will be converted to "utf-8" using `vim.fn.iconv`
+              auto_close_when_success = true,          -- typically, you can use it with the "always" option; it will auto-close the quickfix buffer if the execution is successful.
             },
             toggleterm = {
-              direction = 'float', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+              direction = 'float',   -- 'vertical' | 'horizontal' | 'tab' | 'float'
               size = 15,
               close_on_exit = false, -- whether close the terminal when exit
-              auto_scroll = true, -- whether auto scroll to the bottom
-              singleton = true, -- single instance, autocloses the opened one, if present
+              auto_scroll = true,    -- whether auto scroll to the bottom
+              singleton = true,      -- single instance, autocloses the opened one, if present
             },
             overseer = {
               new_task_opts = {
@@ -760,37 +820,37 @@ require('lazy').setup({
               split_size = 11,
 
               -- Window handling
-              single_terminal_per_instance = true, -- Single viewport, multiple windows
-              single_terminal_per_tab = true, -- Single viewport per tab
+              single_terminal_per_instance = true,  -- Single viewport, multiple windows
+              single_terminal_per_tab = true,       -- Single viewport per tab
               keep_terminal_static_location = true, -- Static location of the viewport if avialable
-              auto_resize = true, -- Resize the terminal if it already exists
+              auto_resize = true,                   -- Resize the terminal if it already exists
 
               -- Running Tasks
-              start_insert = false, -- If you want to enter terminal with :startinsert upon using :CMakeRun
-              focus = false, -- Focus on terminal when cmake task is launched.
+              start_insert = false,       -- If you want to enter terminal with :startinsert upon using :CMakeRun
+              focus = false,              -- Focus on terminal when cmake task is launched.
               do_not_add_newline = false, -- Do not hit enter on the command inserted when using :CMakeRun, allowing a chance to review or modify the command before hitting enter.
-            }, -- terminal executor uses the values in cmake_terminal
+            },                            -- terminal executor uses the values in cmake_terminal
           },
         },
-        cmake_runner = { -- runner to use
+        cmake_runner = {       -- runner to use
           name = 'toggleterm', -- name of the runner
           opts = {
             size = 120,
-            direction = 'vertical', -- 'vertical' | 'horizontal' | 'tab' | 'float'
-          }, -- the options the runner will get, possible values depend on the runner type. See `default_opts` for possible values.
-          default_opts = { -- a list of default and possible values for runners
+            direction = 'vertical',    -- 'vertical' | 'horizontal' | 'tab' | 'float'
+          },                           -- the options the runner will get, possible values depend on the runner type. See `default_opts` for possible values.
+          default_opts = {             -- a list of default and possible values for runners
             quickfix = {
-              show = 'always', -- "always", "only_on_error"
+              show = 'always',         -- "always", "only_on_error"
               position = 'horizontal', -- "bottom", "top"
               size = 15,
               encoding = 'utf-8',
               auto_close_when_success = true, -- typically, you can use it with the "always" option; it will auto-close the quickfix buffer if the execution is successful.
             },
             toggleterm = {
-              direction = 'float', -- 'vertical' | 'horizontal' | 'tab' | 'float'
+              direction = 'float',  -- 'vertical' | 'horizontal' | 'tab' | 'float'
               close_on_exit = true, -- whether close the terminal when exit
-              auto_scroll = true, -- whether auto scroll to the bottom
-              singleton = true, -- single instance, autocloses the opened one, if present
+              auto_scroll = true,   -- whether auto scroll to the bottom
+              singleton = true,     -- single instance, autocloses the opened one, if present
             },
             overseer = {
               new_task_opts = {
@@ -800,24 +860,24 @@ require('lazy').setup({
                   autos_croll = true,
                   quit_on_exit = 'success',
                 },
-              }, -- options to pass into the `overseer.new_task` command
+              },                                -- options to pass into the `overseer.new_task` command
               on_new_task = function(task) end, -- a function that gets overseer.Task when it is created, before calling `task:start`
             },
             terminal = {
               name = 'Main Terminal',
               prefix_name = '[CMakeTools]: ', -- This must be included and must be unique, otherwise the terminals will not work. Do not use a simple spacebar " ", or any generic name
-              split_direction = 'vertical', -- "horizontal", "vertical"
+              split_direction = 'vertical',   -- "horizontal", "vertical"
               split_size = 11,
 
               -- Window handling
-              single_terminal_per_instance = true, -- Single viewport, multiple windows
-              single_terminal_per_tab = true, -- Single viewport per tab
+              single_terminal_per_instance = true,  -- Single viewport, multiple windows
+              single_terminal_per_tab = true,       -- Single viewport per tab
               keep_terminal_static_location = true, -- Static location of the viewport if avialable
-              auto_resize = true, -- Resize the terminal if it already exists
+              auto_resize = true,                   -- Resize the terminal if it already exists
 
               -- Running Tasks
-              start_insert = false, -- If you want to enter terminal with :startinsert upon using :CMakeRun
-              focus = false, -- Focus on terminal when cmake task is launched.
+              start_insert = false,       -- If you want to enter terminal with :startinsert upon using :CMakeRun
+              focus = false,              -- Focus on terminal when cmake task is launched.
               do_not_add_newline = false, -- Do not hit enter on the command inserted when using :CMakeRun, allowing a chance to review or modify the command before hitting enter.
             },
           },
@@ -838,8 +898,43 @@ require('lazy').setup({
         ct.substitute_path = function(path, params)
           return orig_sub(path, params or {}) -- coerce nil ➜ empty table
         end
-        ct._patched_nil_params = true -- don’t double-patch on reload
+        ct._patched_nil_params = true         -- don’t double-patch on reload
       end
+      ------------------------------------------------------------------------
+      -- CMake  ── global key-maps
+      ------------------------------------------------------------------------
+
+      -- helper: only map if the command exists (avoids noisy errors)
+      local function map_cmd(lhs, cmd, desc)
+        if vim.fn.exists(':' .. cmd) == 2 then
+          vim.keymap.set('n', lhs, '<cmd>' .. cmd .. '<CR>', { desc = desc })
+        end
+      end
+
+      -- ── configure / build / run ───────────────────────────────────────────
+      map_cmd('<leader>cg', 'CMakeGenerate', 'CMake  ⚙  Generate (configure)')
+      map_cmd('<leader>cb', 'CMakeBuild', 'CMake  🛠  Build')
+      map_cmd('<leader>cc', 'CMakeClean', 'CMake  ✖  Clean')
+      map_cmd('<leader>ci', 'CMakeInstall', 'CMake  ⛬  Install')
+      map_cmd('<leader>cr', 'CMakeRun', 'CMake  ▸  Run launch target')
+      map_cmd('<leader>cd', 'CMakeDebug', 'CMake  🐞  Debug launch target')
+
+      -- ── select target / configuration ─────────────────────────────────────
+      map_cmd('<leader>cB', 'CMakeSelectBuildTarget', 'CMake  󰄼  Select Build Target')
+      map_cmd('<leader>cL', 'CMakeSelectLaunchTarget', 'CMake  󰜎  Select Launch Target')
+      map_cmd('<leader>ck', 'CMakeSelectKit', 'CMake  󰌠  Select Kit')
+      map_cmd('<leader>cv', 'CMakeSelectBuildType', 'CMake  󰙨  Select Build Type')
+      map_cmd('<leader>cp', 'CMakeSelectConfigurePreset', 'CMake  󰒓  Select Configure Preset')
+      map_cmd('<leader>cP', 'CMakeSelectBuildPreset', 'CMake  󰒓  Select Build Preset')
+
+      -- ── testing ───────────────────────────────────────────────────────────
+      map_cmd('<leader>ct', 'CMakeRunTest', 'CMake  🧪  Run tests (ctest)')
+
+      -- ── UI / control ──────────────────────────────────────────────────────
+      map_cmd('<leader>co', 'CMakeOpen', 'CMake  󱂬  Open task view')
+      map_cmd('<leader>cO', 'CMakeClose', 'CMake  󱂬  Close task view')
+      map_cmd('<leader>cS', 'CMakeStop', 'CMake  ■  Stop running task')
+      map_cmd('<leader>cC', 'CMakeCancel', 'CMake  ■  Cancel running task')
     end, -- cmake-tools setup()
   },
   {
@@ -854,7 +949,7 @@ require('lazy').setup({
       'WhoIsSethDaniel/mason-tool-installer.nvim',
 
       -- Useful status updates for LSP.
-      { 'j-hui/fidget.nvim', opts = {} },
+      { 'j-hui/fidget.nvim',    opts = {} },
 
       -- Allows extra capabilities provided by blink.cmp
       'saghen/blink.cmp',
@@ -1149,19 +1244,22 @@ require('lazy').setup({
     opts = {
       notify_on_error = false,
       format_on_save = function(bufnr)
-        -- Disable "format_on_save lsp_fallback" for languages that don't
-        -- have a well standardized coding style. You can add additional
-        -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
-        if disable_filetypes[vim.bo[bufnr].filetype] then
-          return nil
-        else
-          return {
-            timeout_ms = 500,
-            lsp_format = 'fallback',
-          }
-        end
+        return { timeout_ms = 1000, lsp_fallback = 'always' } -- run formatter then fall back to LSP
       end,
+      -- format_on_save = function(bufnr)
+      --   -- Disable "format_on_save lsp_fallback" for languages that don't
+      --   -- have a well standardized coding style. You can add additional
+      --   -- languages here or re-enable it for the disabled ones.
+      --   local disable_filetypes = { c = true, cpp = true }
+      --   if disable_filetypes[vim.bo[bufnr].filetype] then
+      --     return nil
+      --   else
+      --     return {
+      --       timeout_ms = 500,
+      --       lsp_format = 'fallback',
+      --     }
+      --   end
+      -- end,
       formatters_by_ft = {
         lua = { 'stylua' },
         -- Conform can also run multiple formatters sequentially
@@ -1169,6 +1267,13 @@ require('lazy').setup({
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         -- javascript = { "prettierd", "prettier", stop_after_first = true },
+        c = { 'clang_format' },
+        cpp = { 'clang_format' },
+      },
+      formatters = {
+        clang_format = {
+          args = { '--style=file' },
+        },
       },
     },
   },
@@ -1231,7 +1336,7 @@ require('lazy').setup({
         -- <c-k>: Toggle signature help
         --
         -- See :h blink-cmp-config-keymap for defining your own keymap
-        preset = 'default',
+        preset = 'super-tab',
 
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
@@ -1278,7 +1383,7 @@ require('lazy').setup({
       'nvim-lua/plenary.nvim',
       'nvim-treesitter/nvim-treesitter',
       'antoinemadec/FixCursorHold.nvim', -- optional but recommended
-      'alfaix/neotest-gtest', -- ← the GoogleTest adapter
+      'alfaix/neotest-gtest',            -- ← the GoogleTest adapter
     },
     config = function()
       require('neotest').setup {
@@ -1335,6 +1440,16 @@ require('lazy').setup({
 
   -- Highlight todo, notes, etc in comments
   { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
+
+  { -- lualine statusbar
+    'nvim-lualine/lualine.nvim',
+    dependencies = { 'nvim-tree/nvim-web-devicons' },
+    config = function()
+      require('lualine').setup {
+        options = { theme = 'codedark' },
+      }
+    end,
+  },
 
   { -- Collection of various small independent plugins/modules
     'echasnovski/mini.nvim',
